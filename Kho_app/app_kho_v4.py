@@ -1,13 +1,3 @@
-"""
-app_kho_v4.py
-Dashboard quản lý kho trung tâm — phiên bản đầy đủ (v4):
-  🏠 Tổng quan | 📈 Dự báo nhu cầu | ⏰ Cảnh báo cận date
-  🏭 Kho trung tâm & Kệ | 🚚 Đội xe & Tài xế | 🏬 Chi tiết cửa hàng
-
-Chạy: streamlit run app_kho_v4.py
-YÊU CẦU CÙNG THƯ MỤC: data_generator_v3.py, data_generator_v4.py, forecasting_v3.py
-"""
-
 import datetime
 import numpy as np
 import pandas as pd
@@ -15,7 +5,6 @@ import streamlit as st
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 from data_generator_v4 import build_full_dataset
 from data_import import get_template_csv, validate_columns, read_uploaded_file, build_fact_store_daily_from_upload
 from layer1_ingestion import receive_daily_pos_data, read_raw_log
@@ -37,28 +26,18 @@ st.set_page_config(page_title="Kho Trung Tâm — Dashboard", page_icon="📦", 
 # =============================================================================
 # SIDEBAR
 # =============================================================================
-st.sidebar.title("📦 Kho Trung Tâm")
+st.sidebar.title("KHO TRUNG TÂM")
 st.sidebar.caption("Bảng điều khiển vận hành")
-
-# ---------------------------------------------------------------------------
-# Cấu hình cố định (không hiện trên giao diện) — dùng dữ liệu Circle K thật
-# làm mặc định. Đổi trực tiếp các giá trị dưới đây trong code nếu cần điều
-# chỉnh, không cần thanh trượt cho người dùng cuối.
-# ---------------------------------------------------------------------------
 use_real_stores = True
 n_stores, n_skus, n_clusters = 9, 12, 3
 n_days, n_vehicles, n_drivers = 200, 3, 3
 replenish_cycle, seed = 7, 42
 DEFAULT_DRIVER_NAMES = ["Nguyễn Văn An", "Trần Văn Bình", "Lê Văn Cường"]  # dùng chung cho TOÀN BỘ app
-
 expiry_threshold = st.sidebar.slider("Ngưỡng cảnh báo cận date (ngày)", 1, 14, 5)
-
 with st.sidebar.expander("🛣️ Khoảng cách: chim bay hay đường thật?", expanded=False):
-    st.caption("Mặc định dùng khoảng cách chim bay (Haversine). Có thể lấy khoảng cách "
-               "đi đường thật (OSRM, miễn phí) — cần internet, chỉ dùng được với tọa độ thật.")
     if st.button("Lấy khoảng cách đường thật (OSRM)"):
         if not use_real_stores:
-            st.error("Cần bật 'Dùng tọa độ cửa hàng THẬT' trước.")
+            st.error("Cần bật 'Dùng tọa độ'.")
         else:
             try:
                 from osrm_connector import get_real_distance_matrix_for_stores
@@ -73,15 +52,12 @@ with st.sidebar.expander("🛣️ Khoảng cách: chim bay hay đường thật?
             except Exception as e:
                 st.error(f"Không lấy được từ OSRM ({e}) — vẫn đang dùng khoảng cách chim bay.")
     if st.session_state.get("using_real_road_dist"):
-        st.caption("✅ Đang dùng khoảng cách đường thật (OSRM)")
+        st.caption("Đang dùng khoảng cách đường thật (OSRM)")
     else:
-        st.caption("Đang dùng khoảng cách chim bay (mặc định)")
-
+        st.caption("Đang dùng khoảng cách chim bay")
 run_btn = st.sidebar.button("🔄 Tải / Làm mới dữ liệu", type="primary", use_container_width=True)
-
 st.sidebar.markdown("---")
 with st.sidebar.expander("📤 Tải dữ liệu bán hàng THẬT (thay dữ liệu mô phỏng)", expanded=False):
-    st.caption("Dữ liệu kho trung tâm & đội xe vẫn dùng mô phỏng. Chỉ phần bán hàng/tồn kho cửa hàng được thay thế.")
     st.download_button("📄 Tải file mẫu (CSV)", get_template_csv(), "mau_du_lieu_ban_hang.csv", "text/csv")
     uploaded_file = st.file_uploader("Chọn file CSV hoặc Excel", type=["csv", "xlsx", "xls"])
     apply_upload_btn = st.button("✅ Áp dụng dữ liệu này", use_container_width=True, disabled=uploaded_file is None)
@@ -89,7 +65,7 @@ with st.sidebar.expander("📤 Tải dữ liệu bán hàng THẬT (thay dữ li
 page = st.sidebar.radio("Điều hướng", [
     "🏠 Tổng quan", "📈 Dự báo nhu cầu", "⏰ Cảnh báo cận date",
     "🏭 Kho trung tâm & Kệ", "🚚 Đội xe & Tài xế", "🏬 Chi tiết cửa hàng",
-    "🔄 Quy trình 3 tầng", "🔗 Ghép tuyến", "📦 Kế hoạch phân phối", "📐 Thông tin sản phẩm",
+    "🔄 Quy trình", "🔗 Ghép tuyến", "📦 Kế hoạch phân phối", "📐 Thông tin sản phẩm",
 ])
 st.sidebar.caption(f"Cập nhật đến: {pd.Timestamp.now().strftime('%Y-%m-%d')}")
 
@@ -117,8 +93,6 @@ def run_forecast_v3(fact_store_daily, test_days=30):
     pred_df = predict_quantiles_v3(models, test_df)
     importance_df = get_feature_importance(models)
     return pred_df, importance_df
-
-
 if run_btn or "v4_data" not in st.session_state or "v4_forecast" not in st.session_state:
     with st.spinner("Đang sinh dữ liệu và mô phỏng vận hành (kho, kệ, đội xe)..."):
         st.session_state["v4_data"] = load_all(
@@ -127,7 +101,6 @@ if run_btn or "v4_data" not in st.session_state or "v4_forecast" not in st.sessi
     with st.spinner("Đang huấn luyện mô hình dự báo AI..."):
         st.session_state["v4_forecast"] = run_forecast_v3(st.session_state["v4_data"]["fact_store_daily"])
     st.toast("Đã cập nhật dữ liệu!", icon="✅")
-
 data = st.session_state["v4_data"]
 pred_df, importance_df = st.session_state["v4_forecast"]
 
@@ -177,7 +150,6 @@ N_DAYS = int(fact_store_daily["day_idx"].max()) + 1
 # =============================================================================
 if page == "🏠 Tổng quan":
     st.title("Kho Circle K — Tổng quan vận hành")
-
     last_7 = fact_store_daily[fact_store_daily["day_idx"] >= N_DAYS - 7]
     total_sold_7d = int(last_7["units_sold"].sum())
     lost_by_sku = last_7.groupby("sku_id")["lost_sales"].sum()
@@ -188,20 +160,17 @@ if page == "🏠 Tổng quan":
     excess = (merged / (avg_daily * 7 + 1e-6)) > 2.0
     n_du_thua = int(excess.sum())
     n_can_date = int((batch_snapshot["days_to_expiry"] <= expiry_threshold).sum())
-
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Sản lượng bán ra (7 ngày)", f"{total_sold_7d:,}", f"{n_stores} cửa hàng × {n_skus} SKU")
     c2.metric("SKU đang thiếu hàng", n_sku_thieu, "so với dự báo nhu cầu", delta_color="inverse")
     c3.metric("SKU đang thừa hàng", n_du_thua, "ứ đọng, rủi ro cận date", delta_color="inverse")
     c4.metric("Lô hàng cận date", n_can_date, f"cần xử lý trong {expiry_threshold} ngày", delta_color="inverse")
-
     c5, c6 = st.columns(2)
     today_fleet = fact_fleet_daily[fact_fleet_daily["day_idx"] == N_DAYS - 1]
     n_dang_giao = (today_fleet["trang_thai"] == "Đang giao hàng").sum()
     n_ranh = today_fleet["trang_thai"].str.contains("Rảnh", na=False).sum()
     c5.metric("Tài xế đang giao hàng (hôm nay)", int(n_dang_giao))
     c6.metric("Tài xế đang rảnh (hôm nay)", int(n_ranh))
-
     st.markdown("#### Nhu cầu bán ra toàn hệ thống (thực tế + dự báo)")
     daily_total = fact_store_daily.groupby("day_idx")["units_sold"].sum().reset_index()
     daily_total = daily_total[daily_total["day_idx"] >= N_DAYS - 30]
@@ -212,49 +181,36 @@ if page == "🏠 Tổng quan":
     ax.set_xlabel("Ngày"); ax.set_ylabel("Sản lượng bán")
     ax.legend()
     st.pyplot(fig)
-
     st.markdown("#### ⚠️ Cần xử lý gấp — Tồn kho thấp so với nhu cầu")
     urgent = last_7.groupby(["store_id", "sku_id"]).agg(
         ton_hien_tai=("closing_stock", "last"),
         nhu_cau_tb_ngay=("units_sold", "mean"),
         thieu_hut=("lost_sales", "sum"),
     ).reset_index()
-    # Số ngày tồn kho hiện tại còn đủ dùng, dựa trên nhu cầu bán trung bình gần đây
-    # (dùng cách này thay vì chỉ dựa vào "thiếu hụt" vì dữ liệu POS thật thường không
-    # ghi nhận được nhu cầu bị mất khi hết hàng — thieu_hut khi đó luôn bằng 0)
     urgent["so_ngay_con_du"] = urgent["ton_hien_tai"] / urgent["nhu_cau_tb_ngay"].replace(0, np.nan)
     urgent = urgent[urgent["so_ngay_con_du"] <= 2].merge(dim_stores[["store_id", "store_name"]], on="store_id") \
         .merge(dim_skus[["sku_id", "sku_name"]], on="sku_id") \
         .sort_values("so_ngay_con_du").head(8)
-
     if len(urgent) == 0:
         st.success("Không có mặt hàng nào tồn kho thấp đáng lo ngại.")
     else:
         display_urgent = urgent[["store_name", "sku_name", "ton_hien_tai", "nhu_cau_tb_ngay", "so_ngay_con_du", "thieu_hut"]].copy()
         display_urgent.columns = ["Cửa hàng", "Mặt hàng", "Tồn hiện tại", "Nhu cầu TB/ngày", "Số ngày còn đủ dùng", "Thiếu hụt đã ghi nhận"]
         st.dataframe(display_urgent.round(1), use_container_width=True, hide_index=True)
-        st.caption("'Thiếu hụt đã ghi nhận' chỉ có giá trị khi dùng dữ liệu mô phỏng hoặc hệ thống POS "
-                   "có ghi nhận nhu cầu bị mất — với dữ liệu thật thường sẽ luôn là 0, đây là hạn chế "
-                   "cố hữu của dữ liệu POS, không phải lỗi hệ thống.")
-
 
 # =============================================================================
 # TRANG: DỰ BÁO NHU CẦU
 # =============================================================================
 elif page == "📈 Dự báo nhu cầu":
     st.title("Dự báo nhu cầu AI theo cửa hàng × SKU")
-    st.caption("Mô hình học từ: ngày trong tuần, mùa vụ, thời tiết, lễ Tết")
-
     col1, col2 = st.columns(2)
     sel_store = col1.selectbox("Cửa hàng", sorted(dim_stores["store_name"]))
     sel_sku = col2.selectbox("Mặt hàng", sorted(dim_skus["sku_name"]))
     store_id = dim_stores[dim_stores["store_name"] == sel_store]["store_id"].iloc[0]
     sku_id = dim_skus[dim_skus["sku_name"] == sel_sku]["sku_id"].iloc[0]
     sel_category = dim_skus[dim_skus["sku_name"] == sel_sku]["category"].iloc[0]
-
     sp = pred_df[(pred_df["store_id"] == store_id) & (pred_df["sku_id"] == sku_id)].sort_values("day_idx").reset_index(drop=True)
     sp["date"] = pd.to_datetime(sp["date"])
-
     if len(sp) == 0:
         st.warning("Không đủ dữ liệu để dự báo cho lựa chọn này.")
     else:
@@ -284,16 +240,13 @@ elif page == "📈 Dự báo nhu cầu":
             (fact_store_daily["store_id"] == store_id) & (fact_store_daily["sku_id"] == sku_id)
         ].sort_values("day_idx")
         current_stock = current_stock_rows["closing_stock"].iloc[-1] if len(current_stock_rows) > 0 else 0
-
         tuan_toi = weekly.iloc[0]
         can_nhap = max(0.0, tuan_toi["tong_du_bao"] - current_stock)
-
-        st.markdown("##### 📦 Lượng cần nhập kho tuần tới")
+        st.markdown("##### Lượng cần nhập kho tuần tới")
         c1, c2, c3 = st.columns(3)
         c1.metric("Dự báo nhu cầu tuần tới", f"{tuan_toi['tong_du_bao']:.0f} sản phẩm")
         c2.metric("Tồn kho hiện tại", f"{current_stock:.0f} sản phẩm")
         c3.metric("➜ Cần nhập thêm", f"{can_nhap:.0f} sản phẩm")
-        st.caption("Cần nhập thêm = Dự báo nhu cầu tuần tới − Tồn kho hiện tại (làm tròn về 0 nếu tồn kho đã đủ).")
 
         st.markdown("##### 📋 Nhu cầu dự kiến theo tuần")
         for _, row in weekly.iterrows():
@@ -305,7 +258,7 @@ elif page == "📈 Dự báo nhu cầu":
                 f"Ngày cao điểm dự kiến: {row['ngay_cao_diem'].strftime('%d/%m')} "
                 f"(~{row['luong_cao_diem']:.0f} sản phẩm)."
             )
-            with st.expander(f"🔍 Vì sao tuần {int(row['tuan'])} dự báo như vậy?"):
+            with st.expander(f"Lí do?"):
                 for reason in explain_row(row["peak_row"], category=sel_category):
                     st.markdown(f"- {reason}")
 
@@ -335,13 +288,9 @@ elif page == "📈 Dự báo nhu cầu":
             daily_display[table_cols].style.apply(highlight_weekend, axis=1),
             use_container_width=True, hide_index=True,
         )
-        st.caption("Mỗi dòng là dự báo cho **một ngày cụ thể**. q10/q90 là khoảng dao động (tin cậy 80%); "
-                   "'Nhu cầu thực tế' chỉ có với những ngày đã qua (dữ liệu lịch sử dùng để kiểm tra mô hình).")
-
         csv_daily = daily_display[table_cols].to_csv(index=False).encode("utf-8-sig")
         st.download_button("📥 Tải dự báo theo ngày (CSV)", csv_daily,
                             f"du_bao_ngay_{sel_store}_{sel_sku}.csv", "text/csv")
-
         with st.expander("🔍 Xem giải thích dự báo cho một ngày cụ thể"):
             chosen_date = st.selectbox(
                 "Chọn ngày muốn xem giải thích",
@@ -357,7 +306,6 @@ elif page == "📈 Dự báo nhu cầu":
             )
             for reason in explain_row(chosen_row, category=sel_category):
                 st.markdown(f"- {reason}")
-
         st.markdown("##### 💡 Nhận xét")
         if len(weekly) >= 2:
             last_w, prev_w = weekly.iloc[-1], weekly.iloc[-2]
@@ -368,7 +316,6 @@ elif page == "📈 Dự báo nhu cầu":
                 st.warning(f"📉 Nhu cầu tuần {int(last_w['tuan'])} giảm {abs(pct):.0f}% so với tuần trước — cân nhắc giảm lượng nhập.")
             else:
                 st.success(f"➡️ Nhu cầu tuần {int(last_w['tuan'])} tương đối ổn định (thay đổi {pct:+.0f}%).")
-
         st.markdown("##### 🔍 Yếu tố nào ảnh hưởng nhiều nhất đến mô hình (tính chung)")
         imp_display = importance_df.copy()
         imp_display["feature_vi"] = imp_display["feature"].map(FEATURE_LABELS_VI).fillna(imp_display["feature"])
@@ -377,8 +324,6 @@ elif page == "📈 Dự báo nhu cầu":
         ax2.barh(imp_display.index, imp_display.values, color="#3498db")
         ax2.set_xlabel("Mức độ quan trọng")
         st.pyplot(fig2)
-        st.caption("Đây là mức ảnh hưởng chung của toàn mô hình. Giải thích riêng cho từng tuần xem ở mục "
-                   "'🔍 Vì sao tuần X dự báo như vậy?' phía trên.")
 
 
 # =============================================================================
@@ -386,14 +331,11 @@ elif page == "📈 Dự báo nhu cầu":
 # =============================================================================
 elif page == "⏰ Cảnh báo cận date":
     st.title("Cảnh báo lô hàng cận date")
-
     near = batch_snapshot[batch_snapshot["days_to_expiry"] <= expiry_threshold].copy()
     near = near.merge(dim_stores[["store_id", "store_name"]], on="store_id") \
         .merge(dim_skus[["sku_id", "sku_name", "category"]], on="sku_id") \
         .sort_values("days_to_expiry")
-
     st.metric("Tổng số lô cần xử lý", len(near))
-
     if len(near) == 0:
         st.success("Không có lô hàng nào cận date trong ngưỡng hiện tại.")
     else:
@@ -416,20 +358,16 @@ elif page == "⏰ Cảnh báo cận date":
         st.dataframe(display.style.apply(highlight, axis=1), use_container_width=True, hide_index=True)
         st.caption("🔴 Đã quá hạn — cần thu hồi ngay | 🟡 Còn ≤ 2 ngày — ưu tiên xử lý | 🟢 Còn thời gian")
         csv = display.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("📥 Tải danh sách cận date (CSV)", csv, "canh_bao_can_date.csv", "text/csv")
-
-
+        st.download_button("📥 Tải danh sách cận date", csv, "canh_bao_can_date.csv", "text/csv")
 # =============================================================================
 # TRANG: KHO TRUNG TÂM & KỆ
 # =============================================================================
 elif page == "🏭 Kho trung tâm & Kệ":
     st.title("Quản lý kho trung tâm")
-
     st.markdown(
         f"📍 **Tọa độ kho:** ({dim_warehouse['x'].iloc[0]:.1f}, {dim_warehouse['y'].iloc[0]:.1f}) &nbsp;&nbsp;|&nbsp;&nbsp; "
         f"**Tổng sức chứa:** {dim_warehouse['tong_suc_chua'].iloc[0]:,.0f} đơn vị"
     )
-
     st.markdown("#### 🗺️ Bản đồ mạng lưới")
     _recent = fact_store_daily[fact_store_daily["day_idx"] >= N_DAYS - 7]
     _avg = fact_store_daily[fact_store_daily["day_idx"] >= N_DAYS - 30].groupby(["store_id", "sku_id"])["units_sold"].mean()
@@ -438,10 +376,9 @@ elif page == "🏭 Kho trung tâm & Kệ":
     urgent_store_ids = set(_days_left[_days_left["so_ngay_du"] <= 2]["store_id"])
 
     map_choice = st.radio(
-        "Loại bản đồ", ["Bản đồ tĩnh (mặc định, luôn hoạt động)", "OpenStreetMap tương tác", "Google Maps (cần API key riêng)"],
+        "Loại bản đồ", ["Bản đồ tĩnh ", "OpenStreetMap tương tác", "Google Maps (cần API key riêng)"],
         horizontal=True,
     )
-
     if map_choice == "Google Maps (cần API key riêng)":
         google_api_key = st.text_input("Google Maps API key", type="password",
                                         help="Cần tài khoản Google Cloud có gắn thẻ thanh toán, đã bật 'Maps Embed API'.")
@@ -450,7 +387,6 @@ elif page == "🏭 Kho trung tâm & Kệ":
             route_stops = [sid for sid in route if sid != 0]  # bỏ depot khỏi danh sách waypoint
             url = render_google_maps_route(google_api_key, dim_stores, dim_warehouse, route_stops)
             components.iframe(url, height=450)
-            st.caption(f"Tuyến đường thật qua {len(route_stops)} cửa hàng cần xử lý gấp — tổng {route_km:.1f} km (đường chim bay, Google có thể chọn đường thật dài/ngắn hơn).")
         elif not google_api_key:
             st.info("Nhập API key để hiển thị bản đồ.")
         else:
@@ -477,7 +413,6 @@ elif page == "🏭 Kho trung tâm & Kệ":
 
     st.markdown("#### 📏 Bảng khoảng cách giữa các cửa hàng")
     dist_label = "đường thật (OSRM)" if st.session_state.get("using_real_road_dist") else "chim bay (Haversine)"
-    st.caption(f"Đơn vị: km — đang tính theo khoảng cách {dist_label}.")
     dist_labels = ["Kho trung tâm"] + list(dim_stores["store_name"])
     dist_table = pd.DataFrame(dist_matrix.round(2), index=dist_labels, columns=dist_labels)
     st.dataframe(dist_table, use_container_width=True)
@@ -594,9 +529,6 @@ elif page == "🚚 Đội xe & Tài xế":
 
     # ---------------- TAB 2: Lịch trình tuần (3 tài xế cố định) ----------------
     with tab_schedule:
-        st.caption("Ghép cố định mỗi tài xế với 1 xe và 1 khu vực giao hàng riêng cho cả tuần. "
-                   "Lịch làm/nghỉ từng ngày dựa trên nhịp giao hàng thật quan sát được 7 ngày gần nhất.")
-
         names_input = st.text_area("Danh sách tên tài xế (mỗi dòng 1 tên, số dòng = số xe sẽ dùng)",
                                     value="\n".join(DEFAULT_DRIVER_NAMES), height=100)
         driver_names_new = [n.strip() for n in names_input.split("\n") if n.strip()]
@@ -644,9 +576,6 @@ elif page == "🚚 Đội xe & Tài xế":
 
     # ---------------- TAB 3: Nghỉ phép & Hiệu suất (dữ liệu dùng chung với app Tài xế sau này) ----------------
     with tab_leave:
-        st.caption("Dữ liệu này lưu trong database dùng chung (`outputs/driver_shared.db`) — khi app Tài xế "
-                   "hoàn thiện, tài xế sẽ tự gửi yêu cầu và ghi nhận hiệu suất thật vào đây thay vì dữ liệu mẫu.")
-
         driver_id_name_map = dict(zip(dim_drivers["driver_id"], dim_drivers["ten_tai_xe"]))
         ddb.seed_sample_data(driver_id_name_map, n_days=30)
         driver_names_all = list(dim_drivers["ten_tai_xe"])
@@ -739,16 +668,12 @@ elif page == "🏬 Chi tiết cửa hàng":
 # =============================================================================
 elif page == "🔄 Quy trình 3 tầng":
     st.title("Quy trình xử lý dữ liệu — 3 tầng")
-    st.caption("Tầng 1: nhận dữ liệu hàng ngày từ POS  →  Tầng 2: xử lý cuối tuần  →  Tầng 3: dự báo & lập kế hoạch nhập kho")
 
     tab1, tab2, tab3 = st.tabs(["1️⃣ Thu thập dữ liệu", "2️⃣ Xử lý cuối tuần", "3️⃣ Dự báo & Kế hoạch kho"])
 
     # ---------------- TẦNG 1 ----------------
     with tab1:
         st.subheader("Tầng 1 — Nhận dữ liệu bán hàng hôm nay từ POS")
-        st.caption("Mỗi ngày, cửa hàng xuất dữ liệu bán hàng ra file rồi tải lên đây. "
-                   "Dữ liệu được cộng dồn liên tục cho đến khi chạy xử lý cuối tuần (Tầng 2).")
-
         current_log = read_raw_log()
         st.metric("Số dòng đã tích luỹ trong tuần này (chưa xử lý)", len(current_log))
 
@@ -777,9 +702,6 @@ elif page == "🔄 Quy trình 3 tầng":
     # ---------------- TẦNG 2 ----------------
     with tab2:
         st.subheader("Tầng 2 — Xử lý cuối tuần: tổng hợp bán ra + tồn kho")
-        st.caption("Chạy vào cuối mỗi tuần. Tổng hợp toàn bộ dữ liệu Tầng 1 đã tích luỹ, xuất báo cáo, "
-                   "lưu vào lịch sử dài hạn cho Tầng 3, rồi xoá dữ liệu tạm để bắt đầu tuần mới.")
-
         current_log = read_raw_log()
         if len(current_log) == 0:
             st.info("Chưa có dữ liệu nào từ Tầng 1 để xử lý.")
@@ -812,8 +734,6 @@ elif page == "🔄 Quy trình 3 tầng":
     # ---------------- TẦNG 3 ----------------
     with tab3:
         st.subheader("Tầng 3 — Dự báo nhu cầu & Kế hoạch nhập kho trung tâm")
-        st.caption("Dùng toàn bộ lịch sử đã tích luỹ qua các tuần (từ Tầng 2) để huấn luyện AI, "
-                   "dự báo nhu cầu tuần tới và tính tổng lượng cần nhập cho KHO TRUNG TÂM (không phải từng cửa hàng lẻ).")
 
         if st.button("🤖 Chạy dự báo & lập kế hoạch", key="layer3_btn"):
             with st.spinner("Đang huấn luyện mô hình trên toàn bộ lịch sử..."):
@@ -844,9 +764,6 @@ elif page == "🔄 Quy trình 3 tầng":
 # =============================================================================
 elif page == "🔗 Ghép tuyến":
     st.title("Đề xuất ghép tuyến giao hàng")
-    st.caption("So sánh chi phí nếu giao riêng từng cửa hàng so với gộp thành 1 chuyến — "
-               "tính từ khoảng cách thật (Haversine) và thuật toán tối ưu tuyến (Nearest-Neighbor + 2-opt).")
-
     COST_PER_KM = 1.2
     FIXED_DISPATCH_COST = 25.0
 
@@ -888,8 +805,6 @@ elif page == "🔗 Ghép tuyến":
 
     st.markdown("---")
     st.markdown("#### 🤖 Đề xuất ghép tuyến TỰ ĐỘNG (toàn bộ mạng lưới — không cần tự chọn)")
-    st.caption("Dùng thuật toán Clarke-Wright Savings (kinh điển trong Operations Research) để tự động "
-               "tìm cách gộp TẤT CẢ cửa hàng thành các tuyến đa điểm tối ưu — không cần dò tay từng tổ hợp.")
 
     max_hours = st.slider("Giới hạn thời gian tối đa mỗi tuyến (giờ)", 1.0, 8.0, 4.0, step=0.5)
     all_store_ids_auto = list(dim_stores["store_id"])
@@ -909,16 +824,11 @@ elif page == "🔗 Ghép tuyến":
                                               demand_by_store=demand_by_store_gt, catalog=catalog_gt,
                                               dim_vehicles=dim_vehicles)
     st.dataframe(auto_routes, use_container_width=True, hide_index=True)
-    st.caption("✅ Đã xét ĐỒNG THỜI quãng đường ngắn nhất VÀ thể tích xe (dựa trên dự báo nhu cầu tuần tới) — "
-               "🧊 = tuyến có hàng lạnh, bắt buộc xe có ngăn lạnh.")
     csv_auto = auto_routes.to_csv(index=False).encode("utf-8-sig")
     st.download_button("📥 Tải đề xuất tự động (CSV)", csv_auto, "de_xuat_tu_dong.csv", "text/csv")
 
     st.markdown("---")
     st.markdown("#### 🔗 Ghép tuyến tự chọn (nhiều cửa hàng cùng lúc)")
-    st.caption("Chọn các cửa hàng muốn ghép chung 1 chuyến — hệ thống tự tính thứ tự đi tối ưu "
-               "(Kho → ... → Kho) và so sánh với việc giao riêng từng cửa hàng.")
-
     chosen_names = st.multiselect("Chọn cửa hàng cần ghép tuyến", dim_stores["store_name"].tolist(),
                                    default=list(dim_stores["store_name"].iloc[:3]))
 
@@ -953,18 +863,10 @@ elif page == "🔗 Ghép tuyến":
 # =============================================================================
 elif page == "📦 Kế hoạch phân phối":
     st.title("Kế hoạch phân phối tuần tới")
-    st.caption("Dựa trên dự báo nhu cầu (Tầng 3) → xác định mặt hàng xuất qua cửa nào, "
-               "tuyến nào cần xe/tài xế gì.")
 
     col1, col2 = st.columns(2)
     n_gates = col1.slider("Số cửa xuất kho (theo vị trí kệ)", 1, 4, 2)
     max_route_hours_plan = col2.slider("Giới hạn thời gian tối đa mỗi tuyến (giờ)", 1.0, 8.0, 4.0, step=0.5)
-    st.caption("Cửa xuất = hàng ở kệ nào xuất qua cửa đó (cố định, không đổi theo cửa hàng đích đến). "
-               "Tuyến giao hàng được gộp TỰ ĐỘNG bằng thuật toán Clarke-Wright (giống hệt trang 'Ghép tuyến') "
-               "— không chia đều theo cụm địa lý cố định nữa, đảm bảo 2 trang cho kết quả nhất quán.")
-    st.caption("✅ Chọn xe giờ dựa trên **thể tích thật** (xem trang '📦 Thông tin sản phẩm' để biết kích thước "
-               "đóng gói từng mặt hàng) — không còn ước tính trọng lượng chung chung như trước.")
-
     # Chỉ lấy đúng 7 ngày đầu của dự báo (tuần tới), tránh cộng dồn cả giai đoạn test dài hơn
     week1_start = pred_df["day_idx"].min()
     pred_week1 = pred_df[pred_df["day_idx"] < week1_start + 7]
@@ -1001,8 +903,6 @@ elif page == "📦 Kế hoạch phân phối":
 
         st.markdown("#### 🚚 Tuyến / Xe / Tài xế theo từng khu vực giao hàng")
         st.dataframe(result["route_plan"], use_container_width=True, hide_index=True)
-        st.caption("'Cần lấy hàng từ' cho biết tuyến đó cần lấy hàng ở những cửa xuất nào trước khi khởi hành "
-                   "(vì các cửa hàng trên cùng 1 tuyến có thể cần mặt hàng nằm ở kệ/cửa khác nhau).")
         if result["route_plan"]["Loại xe đề xuất"].str.contains("⚠").any():
             st.warning("Có tuyến vượt tải xe lớn nhất hiện có — cần chia thành nhiều chuyến trong tuần, "
                        "hoặc cân nhắc bổ sung thêm xe tải trọng lớn hơn.")
@@ -1020,8 +920,6 @@ elif page == "📦 Kế hoạch phân phối":
 # =============================================================================
 elif page == "📐 Thông tin sản phẩm":
     st.title("Thông tin sản phẩm & Đóng gói")
-    st.caption("Kích thước thùng đóng gói từng mặt hàng — dùng để tính thể tích thật khi xếp hàng lên xe "
-               "(trang 'Kế hoạch phân phối' dùng đúng số liệu này để chọn xe tối ưu thể tích).")
 
     catalog = build_product_catalog(dim_skus)
     display_catalog = catalog[["sku_name", "category", "Loại đóng gói",
@@ -1033,16 +931,11 @@ elif page == "📐 Thông tin sản phẩm":
                                   default=display_catalog["Loại đóng gói"].unique().tolist())
     st.dataframe(display_catalog[display_catalog["Loại đóng gói"].isin(loai_filter)],
                  use_container_width=True, hide_index=True)
-    st.caption("⚠️ Kích thước đang là số liệu ƯỚC TÍNH theo nhóm hàng (chưa có dữ liệu thật từng SKU cụ thể) "
-               "— nên thay bằng số đo thật nếu doanh nghiệp có sẵn, để kết quả xếp xe chính xác hơn.")
-
     csv_catalog = display_catalog.to_csv(index=False).encode("utf-8-sig")
     st.download_button("📥 Tải danh mục sản phẩm (CSV)", csv_catalog, "danh_muc_san_pham.csv", "text/csv")
 
     st.markdown("---")
     st.markdown("#### 🧮 Thử tính thể tích & chọn xe")
-    st.caption("Nhập số lượng cần chở cho vài mặt hàng, xem tổng thể tích và xe đề xuất (tối ưu % trống thấp nhất).")
-
     sel_skus = st.multiselect("Chọn mặt hàng", dim_skus["sku_name"].tolist(), default=dim_skus["sku_name"].tolist()[:3])
     demand_input = {}
     for name in sel_skus:
