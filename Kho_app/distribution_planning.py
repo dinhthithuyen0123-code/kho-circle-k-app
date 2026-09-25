@@ -83,10 +83,24 @@ def plan_future_distribution(
     # ---- 2) Gom TUYẾN GIAO HÀNG bằng Clarke-Wright (giống hệt trang "Ghép tuyến") ----
     # Chỉ những cửa hàng THỰC SỰ CẦN giao (nhu cầu > 0) mới được đưa vào thuật toán ghép tuyến
     stores_needing_delivery = demand[demand["q50"] > 0]["store_id"].unique().tolist()
-    merged_routes = clarke_wright_merge(dist, stores_needing_delivery, avg_speed_kmh,
-                                         service_hours_per_stop, max_route_hours, depot=0)
 
     catalog = build_product_catalog(dim_skus)
+
+    # Xét ĐỒNG THỜI ràng buộc thời gian VÀ thể tích xe lớn nhất hiện có ngay trong bước ghép tuyến
+    # — giống hệt trang "Ghép tuyến" (auto_suggest_merged_routes) — để 2 trang luôn nhất quán,
+    # tránh trường hợp gộp quá nhiều cửa hàng vào 1 tuyến rồi mới phát hiện vượt thể tích xe ở bước sau.
+    demand_by_store_plan = {
+        sid: dict(zip(g["sku_id"], g["q50"])) for sid, g in demand.groupby("store_id")
+    }
+    volume_per_store_plan = {
+        s: compute_volume_needed(demand_by_store_plan.get(s, {}), catalog) for s in stores_needing_delivery
+    }
+    max_vehicle_volume_plan = (dim_vehicles["the_tich_m3"] * 1000).max()
+
+    merged_routes = clarke_wright_merge(dist, stores_needing_delivery, avg_speed_kmh,
+                                         service_hours_per_stop, max_route_hours, depot=0,
+                                         volume_per_store=volume_per_store_plan,
+                                         max_vehicle_volume_liters=max_vehicle_volume_plan)
 
     driver_hours_left = dim_drivers.set_index("driver_id")["gio_lam_toi_da_ngay"].to_dict()
     driver_queue = list(dim_drivers["driver_id"])

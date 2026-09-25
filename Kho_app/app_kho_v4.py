@@ -666,7 +666,7 @@ elif page == "🏬 Chi tiết cửa hàng":
 # =============================================================================
 # TRANG: QUY TRÌNH 3 TẦNG (Thu thập -> Xử lý cuối tuần -> Dự báo & Kế hoạch kho)
 # =============================================================================
-elif page == "🔄 Quy trình 3 tầng":
+elif page == "🔄 Quy trình":
     st.title("Quy trình xử lý dữ liệu — 3 tầng")
 
     tab1, tab2, tab3 = st.tabs(["1️⃣ Thu thập dữ liệu", "2️⃣ Xử lý cuối tuần", "3️⃣ Dự báo & Kế hoạch kho"])
@@ -807,7 +807,6 @@ elif page == "🔗 Ghép tuyến":
     st.markdown("#### 🤖 Đề xuất ghép tuyến TỰ ĐỘNG (toàn bộ mạng lưới — không cần tự chọn)")
 
     max_hours = st.slider("Giới hạn thời gian tối đa mỗi tuyến (giờ)", 1.0, 8.0, 4.0, step=0.5)
-    all_store_ids_auto = list(dim_stores["store_id"])
 
     # Nhu cầu tuần tới theo từng cửa hàng (từ dự báo Tầng 3) -> để xét ràng buộc thể tích xe khi ghép tuyến
     week1_start_gt = pred_df["day_idx"].min()
@@ -817,6 +816,13 @@ elif page == "🔗 Ghép tuyến":
         sid: dict(zip(g["sku_id"], g["q50"])) for sid, g in weekly_demand_gt.groupby("store_id")
     }
     catalog_gt = build_product_catalog(dim_skus)
+
+    # Chỉ ghép tuyến cho cửa hàng THỰC SỰ có nhu cầu dự báo > 0 trong tuần tới — giống hệt điều kiện
+    # đang dùng ở trang "📦 Kế hoạch phân phối", để 2 trang luôn cho kết quả nhất quán với nhau.
+    stores_with_demand_gt = weekly_demand_gt[weekly_demand_gt["q50"] > 0]["store_id"].unique().tolist()
+    all_store_ids_auto = stores_with_demand_gt if len(stores_with_demand_gt) > 0 else list(dim_stores["store_id"])
+    if len(stores_with_demand_gt) < len(dim_stores):
+        skipped = len(dim_stores) - len(stores_with_demand_gt)
 
     auto_routes = auto_suggest_merged_routes(dist_matrix, all_store_ids_auto, dim_stores,
                                               cost_per_km=COST_PER_KM, fixed_dispatch_cost=FIXED_DISPATCH_COST,
